@@ -1,0 +1,231 @@
+---
+title: "GLM Simulation Study"
+author: "Mattis Min"
+date: "2025-12-09"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+
+# Package Versions:
+# dplyr (1.1.4), tidyr (1.3.1), ggplot2 (3.5.2), knitr (1.50), kableExtra (1.4.0)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+
+# Load pre-computed simulation summaries and plot
+source("scripts/sim_results.R")
+```
+
+## 1. Background
+  Generalized linear models (GLMs) extend ordinary linear regression to situations where the response does not follow a Normal distribution. They use a link function to map the mean of the response to a linear combination of predictors. GLMs assume a distribution from the exponential family like Normal, Poisson, or Binomial.
+
+  In an application where the outcomes represent counts, such as the number of events that occur within a time interval, the Poisson distribution is often used. The Poisson GLM assumes:
+
+\[
+\log(\lambda) = \beta_0 + \beta_1 x,
+\]
+
+where \(\lambda\) represents the expected count. 
+The model misspecification occurs when the analyst uses Normal model for Poisson data and it leaves coefficient estimate unbiased in some cases. Misspecification distort the variance estimate of coefficient, which affects the standard errors, confidence intervals (CI), and hypothesis tests. 
+
+  In this project, we examine how GLMs behave when the distribution is correctly specified (Poisson) versus misspecified (Normal). We simulated and evaluted Poisson-distributed data under multiple scenarios: 
+
+1. Bias of the estimated mean response \(\hat{\lambda}\)
+
+2. Coefficient estimates \(\hat{\beta}_1\)
+
+3. Naive vs. robust variance estimators for \(\hat{\beta}_1\)
+
+4. 95% confidence intervals constructed under each variance estimator
+
+  Through this study, we evaluated the effects of model misspecification and assessed how the effect of sample size and true parameter values influence model performance. 
+
+## 2. Methods 
+### 2.1 Simulation Design
+  We conducted a factorial simulation study by changing two key factors:  
+
+1. Sample size \(N = 20, 200\)  
+2. True Poisson mean \(\lambda = 4, 10\)
+
+  This yielded four simulation scenarios. For each combination of \(N\) and \(\lambda\), we generated \(R = 2000\) independent datasets.
+
+  The predictor variable \(x\) was supplied by the instructor as a fixed binary vector (length \(N\)). Because our study aimed to isolate the effect of model misspecification, outcome was simulated independently of \(x\). For each simulation run, we generated
+
+\[
+Y_i \sim \text{Poisson}(\lambda), \quad i = 1,\dots,N,
+\]
+
+and constructed a dataset with columns \((Y, x)\).
+
+### 2.2 Model Fitting
+  Each simulated dataset was analyzed using two generalized linear models:
+
+1. Poisson GLM
+   \[
+   \log(\lambda_i) = \beta_0 + \beta_1 x_i
+   \]
+
+2. Normal (Gaussian) GLM, which assumes  
+   \[
+   Y_i = \beta_0 + \beta_1 x_i + \varepsilon_i, 
+   \quad \varepsilon_i \sim N(0, \sigma^2).
+   \]
+
+  The Poisson model is specified correctly for the simulated data, while the Normal model is  misspecified on purpose.
+
+### 2.3 Quantities Recorded
+
+  For each fitted model and each simulation run, we extracted: 
+
+1. the estimated mean response \(\hat{\lambda}\)  
+Using the `predict()` function with `type = "response"`.  
+Bias was computed as:  
+\[
+\text{Bias} = \bar{\hat{\lambda}} - \lambda.
+\]
+
+2. Estimated coefficient \(\hat{\beta}_1\)  
+This value should be near zero because the outcome was simulated independently of \(x\).
+
+3. Variance estimates for \(\hat{\beta}_1\)
+We computed two versions:
+
+- Naïve variance (from the model’s usual covariance matrix)  
+  \[
+  \widehat{\text{Var}}_{\text{naive}}(\hat{\beta}_1)
+  \]
+- Robust (sandwich) variance 
+  obtained using the `sandwich` package.
+  
+  These variances were used to construct 95% confidence intervals:
+
+\[
+\hat{\beta}_1 \pm 1.96 \times \text{SE}, 
+\quad \text{where SE} = \sqrt{\widehat{\text{Var}}}.
+\]
+
+### 2.4 Repetition and Storage
+
+  For each scenario, we repeated the simulation 2000 times, stored the results in data frames, and saved the combined output to an `.RData` file. This allowed us to summarize bias, variance, and confidence interval behavior across all replicates without rerunning the full simulation.
+
+## 3. Results
+
+### 3.1 Bias of \(\hat{\lambda}\)
+
+```{r}
+bias_wide <- bias_table |>
+  # Round for nice display
+  mutate(
+    mean_bias_lambda =
+      round(mean_bias_lambda, 3)
+  ) |>
+  # Pivot Normal + Poisson into separate columns
+  pivot_wider(
+    names_from = model,
+    values_from = mean_bias_lambda
+  ) |>
+  # Order rows by lambda just for readability
+  arrange(lambda) |>
+  # Now pivot sample size into column groups
+  pivot_wider(
+    names_from = N,
+    values_from = c(Normal, Poisson),
+    names_glue = "{.value}_N{N}"
+  ) |>
+  # reorder columns into the structure we want
+  select(
+    lambda,
+    Normal_N20, Poisson_N20,
+    Normal_N200, Poisson_N200
+  )
+
+kable(
+  bias_wide,
+  col.names = c(
+    "Lambda",
+    "Normal", "Poisson",
+    "Normal", "Poisson"
+  ),
+  caption = "Mean Bias of \\(\\hat{\\lambda}\\) Across Simulation Scenarios"
+) |>
+  kable_styling(full_width = FALSE) |>
+  add_header_above(c(" " = 1, "N = 20" = 2, "N = 200" = 2))
+```
+  Across all combinations of sample size and true \(\lambda\), both Poisson GLM and Normal GLM produced mean-response estimates \(\hat{\lambda}\) with extremely small bias. Bias remained close to zero for all sample sizes and all true \(\lambda\) values. As can be seen on table 1, the average bias equaled to about 0.009 when \(N = 20\) white bias was esentially 0 when \(N = 200\). The table shows stable and an almost unbiased estimation across all scenarios. 
+
+  Because the data were simulated from a Poisson distribution with a constant mean \(\lambda\) and \(Y\) indepdence from \(x\), both models estimate the overall mean of the outcome well. Model misspecification affected the variance structure and not the mean structure under this setup. Thus the misspecified normal GLM recovered \(\lambda\) accurately.
+
+  Bias decreased when sample size increased from \(N = 20\) to \(N = 200\). Larger samples reduced random variability in simulated outcomes. The larger \(N\) caused \(\hat{\lambda}\) to converge more closely to true \(\lambda\). Sample size strengthened the stablility of the mean estimation for both GLMs.
+
+### 3.2 Variance of \(\hat{\beta}_1\)
+
+```{r variance table}
+var_table_clean <-
+  variance_table |>
+  mutate(
+    mean_nvar_beta1 = round(mean_nvar_beta1, 3),
+    mean_rvar_beta1 = round(mean_rvar_beta1, 3)
+  ) |>
+  arrange(N, lambda, model) |>
+  mutate(
+    # Blank repeated N values
+    N_display = if_else(duplicated(N), "", as.character(N)),
+    # Blank repeated lambda within each N group
+    lambda_display = if_else(
+      duplicated(paste(N, lambda)),
+      "",
+      as.character(lambda)
+    )
+  ) |>
+  select(
+    N = N_display,
+    lambda = lambda_display,
+    model,
+    mean_nvar_beta1,
+    mean_rvar_beta1
+  )
+
+kable(
+  var_table_clean,
+  col.names = c(
+    "N",
+    "Lambda",
+    "Model",
+    "Naive Var.",
+    "Robust Var."
+  ),
+  escape = FALSE,
+  caption = "Naive and Robust Variances of $\\hat{\\beta}_1$ Across All Scenarios"
+) |>
+  kable_styling(full_width = FALSE, position = "center")
+```
+
+  Table 2 summarizes the mean naive and robust variance estimates of \(\hat{\beta}_1\) for each sample size and true Poisson parameter.  Because the true data-generating models sets \(\beta_1 = 0\), predictor \(x\) is independent of outcome \(Y\). 
+
+  Poisson GLM produces much smaller variance estimates than the Normal GLM across all scenarios. Poisson likelihood correctly uses the mean-variance relationship in the count data. The inflation is especially pronounced when \(N = 20\) and \({\lambda} = 20\), where the Normal model variances exceed those from the Poisson model by more than an order of magnitude. Increasing the sample size reduces that variance for both models, but Normal model continues to estimate larger variances than Poisson GLM in all sample sizes. 
+
+  Comparing naive and robust variance estimators, robust variance estimator is slightly smaller than naive estimator across scenarios. The difference is most visible when \(N\) is small and the Normal GLM is misspecified. As \(N\) increases the naive and robust estimates move closer together. 
+
+  Together, these results show that model misspecification primarily affects variance rather than bias, and the impact is strongest for small samples and incorrect distributional assumptions.
+
+### 3.3 Confidence Interval for \(\hat{\beta}_1\)
+```{r 95 CI}
+ci_plot
+```
+
+Figure 1 presents the 95% confidence intervals for $\hat{\beta}_1$ using naive and robust standard errors. Correctly specified models show intervals that stay close to zero and remain narrow. Poisson GLM produces a much narrower confidence interval than Normal GLM in all scenarios, as it uses the correct mean-variance structure for count outcomes. Normal GLM assumes constant variance and does not match the Poisson data. The interval inflation is strongest when $N = 20$ and for larger $\lambda$ values such as $\lambda = 10$.
+
+Robust CI are usually are usually slightly narrower than naive intervals. The difference appears most clearly for the Normal GLM when the sample size is small. As $N$ increases, naive and robust intervals move closer together. Larger sample sizes shorten all intervals.
+
+## 4. Conclusion
+Both Poisson and Normal GLMs produced unbiased estimates of $\hat{\lambda}$ in every simulation setting. Bias remained unaffected by the choice of model, indicating that distributional misspecification did not influence mean estimation. The main effect of misspecification appeared in the variance of $\hat{\beta}_1$. Poisson GLM showed much smaller variance for $\hat{\beta}_1$ because its variance structure matched the data-generating Poisson process. Normal GLM reported larger variance values, especially when sample size was small or when the true $\lambda$ was large. Robust variance estimators were slightly smaller than naïve estimators across all scenarios. Differences between robust and naïve variance were most noticeable under misspecification and small sample sizes. Increasing the sample size reduced variance for both models. Naïve and robust estimators moved closer to one another as $N$ grew. Overall results showed that misspecification did not alter bias in $\hat{\lambda}$ but did increase variance and widen confidence intervals. The impact of misspecification weakened as sample size increased.
