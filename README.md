@@ -38,7 +38,7 @@ glm-misspecification-simulation/
 │   ├── x_n20.csv
 │   └── x_n200.csv
 │
-├── R/
+├── scripts/
 │   ├── sim_functions.R
 │   ├── sim_run.R
 │   └── sim_results.R
