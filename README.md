@@ -30,6 +30,7 @@ Misspecification does not materially affect mean estimation in this null setting
 
 ## Structure
 
+```
 glm-misspecification-simulation/
 │
 ├── README.md
@@ -45,3 +46,4 @@ glm-misspecification-simulation/
 └── report/
     ├── glm-misspecification-simulation.Rmd
     └── GLM_Simulation_Study_Report.pdf
+```
